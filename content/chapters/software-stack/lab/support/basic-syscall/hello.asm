@@ -3,6 +3,9 @@
 section .rodata
 
 hello db "Hello, world!", 10, 0
+hello_len equ $ - hello
+bye db "Bye, world! *commits sudoku*", 10, 0
+bye_len equ $ - bye
 
 section .text
 
@@ -19,7 +22,13 @@ main:
     ; rdx <- third syscall argument (lenght: 14)
     mov rdi, 1
     mov rsi, hello
-    mov rdx, 14
+    mov rdx, hello_len
+    mov rax, 1
+    syscall
+	
+    mov rdi, 1
+    mov rsi, bye
+    mov rdx, bye_len
     mov rax, 1
     syscall
 

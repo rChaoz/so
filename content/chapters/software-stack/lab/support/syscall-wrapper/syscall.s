@@ -3,6 +3,7 @@
 section .text
 
 global write
+global read
 global exit
 
 write:
@@ -14,6 +15,11 @@ write:
     syscall
 
     ret
+
+read:
+	mov rax, 0
+	syscall
+	ret
 
 exit:
     ; rax <- __NR_exit (index of exit syscall: 60)
