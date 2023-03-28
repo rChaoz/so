@@ -43,7 +43,7 @@ docusaurus:
             name: README
             location: content/landing-page
       - Lecture:
-        - Software-Stack:
+        - Software Stack:
             name: Software-Stack
             location: /build/embed_reveal/Software-Stack
         - Data:
@@ -55,14 +55,14 @@ docusaurus:
         - IO:
             name: IO
             location: /build/embed_reveal/IO
-        - Application-Interaction:
+        - Application Interaction:
             name: Application-Interaction
             location: /build/embed_reveal/Application-Interaction
       - Lab:
-        - Software-Stack:
-          - Introduction:
-              location: content/chapters/software-stack/lab
-              name: content/introduction
+        - Setting up the Lab Environment:
+            location: content/misc
+            name: lab-setup
+        - Software Stack:
           - Overview:
               location: content/chapters/software-stack/lab
               name: content/overview
@@ -109,9 +109,6 @@ docusaurus:
           - Investigate Memory:
               location: content/chapters/data/lab
               name: content/investigate-memory
-          - Memory Support:
-              location: content/chapters/data/lab
-              name: content/memory-support
           - Memory Security:
               location: content/chapters/data/lab
               name: content/memory-security
@@ -150,9 +147,6 @@ docusaurus:
           - Overview:
               location: content/chapters/io/lab
               name: content/overview
-          - Introduction:
-              location: content/chapters/io/lab
-              name: content/introduction
           - File Handlers:
               location: content/chapters/io/lab
               name: content/file-handlers
@@ -198,7 +192,7 @@ docusaurus:
           - Arena:
               location: content/chapters/io/lab
               name: content/arena
-        - Application-Interaction:
+        - Application Interaction:
           - Overview:
               location: content/chapters/app-interact/lab
               name: content/overview
@@ -220,6 +214,22 @@ docusaurus:
           - Arena:
               location: content/chapters/app-interact/lab
               name: content/arena
+      - Assignments:
+        - Mini Libc:
+            location: content/assignments/mini-libc
+            name: README
+        - Memory Allocator:
+            location: content/assignments/memory-allocator
+            name: README
+        - Parallel Graph:
+            location: content/assignments/parallel-graph
+            name: README
+        - Mini Shell:
+            location: content/assignments/minishell
+            name: README
+        - Asynchronous Web Server:
+            location: content/assignments/async-web-server
+            name: README
     static_assets:
       - slides/Compute: /build/make_assets/content/chapters/compute/lecture/_site
       - slides/Software-Stack: /build/make_assets/content/chapters/software-stack/lecture/_site

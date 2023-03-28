@@ -8,7 +8,7 @@ Memory addresses use different permissions to decide what actions are allowed.
 
 Let's investigate the memory areas of a given process.
 We use `pmap` to see the memory layout of a running process.
-The command below shows the memory layour of the current shell process:
+The command below shows the memory layout of the current shell process:
 
 ```console
 student@os:~$ pmap -p $$
@@ -87,6 +87,11 @@ student@os:~$ ps -o pid,rss,vsz -p $$
 
 The resident size is `1968K`, much smaller than the virtual size.
 
+Note how each region has a size multiple of `4K`, this has to do with the memory granularity.
+The operating system allocates memory in chunks of a predefined size (in our case `4K`) called pages.
+
+[Quiz](../quiz/half-page.md)
+
 ### Practice
 
 Enter the `support/memory-areas/` directory.
@@ -135,11 +140,7 @@ We investigate other programs.
    The output is similar, but with fewer dynamic libraries than `bash`, since they are not used by the program.
 
 1. Make a program in another language of your choice that prints `Hello, world!` and sleeps and investigate it with `pmap`.
-   Note that in the case of interpreted languages (Python, Lua, Perl, Ruby, PHP, JavaScript etc.) you have to investigate the interpretor process.
-
-### Quiz
-
-TODO
+   Note that in the case of interpreted languages (Python, Lua, Perl, Ruby, PHP, JavaScript etc.) you have to investigate the interpreter process.
 
 ## Memory Layout of Statically-Linked and Dynamically-Linked Executables
 
@@ -189,8 +190,8 @@ ffffffffff600000      4K --x--   [ anon ]
  total             4520K
 ```
 
-For the static executable we can see there are not areas for dynamic libraries.
-And the `.rodata` section has been coallesced in the `.text` area.
+For the static executable, we can see there are no areas for dynamic libraries.
+And the `.rodata` section has been coalesced in the `.text` area.
 
 We can see the size of each section in the two executables by using the `size` command:
 
@@ -206,14 +207,14 @@ text    data     bss     dec     hex filename
 
 ### Quiz
 
-Based on the information above, answer [this quiz](../quiz/static-dynamic.md).
+Based on the information above, answer [this quiz](../quiz/memory-granularity.md).
 
 ### Practice
 
 1. Let's investigate another static executable / process.
 
    If not already installed, install the `busybox-static` package on your system.
-   On Debian/Ubuntu systems use:
+   On Debian/Ubuntu systems, use:
 
    ```console
    student@os:~$ sudo apt install busybox-static
@@ -269,9 +270,7 @@ For now, we want to point out how threads affect the process memory layout.**
 1. Make a program in another language of your choice that creates threads.
    Investigate it with `pmap`.
 
-### Quiz
-
-TODO
+[Quiz](../quiz/thread-memory.md)
 
 ## Modifying Memory Region Size
 
@@ -337,29 +336,27 @@ We notice the size increase of text, data, bss, heap and stack sections.
 1. Use a different argument (`order`) for the call to the `alloc_stack()` function.
    See how it affects the stack size during runtime (investigate with `pmap`).
 
-1. Do a static build of `hello.c` and check the size of the memory areas both statically and dynamically.
+1. Do a static build of `hello.c` and check the size of the memory areas, both statically and dynamically.
 
 1. The `extend_mem_area.py` Python script allocates a new string at each step by merging the two previous versions.
    Start the program and investigate the resulting process at each allocation step.
    Notice which memory area is updated and explain why.
 
-### Quiz
-
-TODO
+[Quiz](../quiz/page-allocation.md)
 
 ## Allocating and Deallocating Memory
 
 Memory areas in a process address space are static or dynamic.
-Static memory areas are known at the beginning of process life time (i.e. at load-time), while dynamic memory areas are managed at runtime.
+Static memory areas are known at the beginning of process lifetime (i.e. at load-time), while dynamic memory areas are managed at runtime.
 
 `.text`, `.rodata`, `.data`, `.bss` are allocated at load-time and have a predefined size.
 The stack and the heap and memory mappings are allocated at runtime and have a variable size.
-For those, we say we use rutime allocation and deallocation.
+For those, we say we use runtime allocation and deallocation.
 
 Memory allocation is implicit for the stack and explicit for the heap.
 That is, we don't make a particular call to allocate data on the stack;
 the compiler generates the code that the operating system uses to increase the stack when required.
-For the heap we use the `malloc()` and `free()` calls to explicitly allocate and deallocate memory.
+For the heap, we use the `malloc()` and `free()` calls to explicitly allocate and deallocate memory.
 
 Omitting to deallocate memory results in memory leaks that hurt the resource use in the system.
 Because of this, some language runtimes employ a garbage collector that automatically frees unused memory areas.
@@ -476,7 +473,7 @@ brk(0x55ab98b08000)                     = 0x55ab98b08000
 write(1, "New allocation at 0x55ab98adfb10"..., 33New allocation at 0x55ab98adfb10
 ) = 33
 write(1, "Press key to deallocate ...", 27Press key to deallocate ...) = 27
-read(0, 
+read(0,
 "\n", 1024)                     = 1
 brk(0x55ab98b00000)                     = 0x55ab98b00000
 [...]
@@ -508,7 +505,7 @@ mmap(NULL, 266240, PROT_READ|PROT_WRITE, MAP_PRIVATE|MAP_ANONYMOUS, -1, 0) = 0x7
 write(1, "New allocation at 0x7feee19b1010"..., 33New allocation at 0x7feee19b1010
 ) = 33
 write(1, "Press key to deallocate ...", 27Press key to deallocate ...) = 27
-read(0, 
+read(0,
 "\n", 1024)                     = 1
 munmap(0x7feee19b1000, 266240)          = 0
 [...]
@@ -534,9 +531,9 @@ This is based on a heuristic of using the heap or some other area in the process
 
 1. Use `valgrind` on different executables in the system (in `/bin/`, `/usr/bin/`) and see if they have memory leaks.
 
-### Quiz
+[Quiz](../quiz/malloc-brk.md)
 
-TODO
+[Quiz](../quiz/malloc-mmap.md)
 
 ## Memory Mapping
 
@@ -546,13 +543,29 @@ Mapping of files is done by the loader for executables and libraries.
 That is why, in the output of `pmap`, there is a column with a filename.
 
 Mapping of a file results in getting a pointer to its contents and then using that pointer.
-This way, reading and writing to a file is an exercise or pointer copying, instead of the use of `read` / `write`-like system calls.
+This way, reading and writing to a file is an exercise of pointer copying, instead of the use of `read` / `write`-like system calls.
 
-In the `support/copy/` folder there are two source code files and a script:
+In the `support/copy/` folder, there are two source code files and two scripts:
 
 * `read_write_copy.c` implements copying with `read` / `write` syscalls
 * `mmap_copy.c` implements copying using `mmap`
 * `generate.sh` script generates the input file `in.dat`
+* `benchmark_cp.sh` script runs the two executables `mmap_copy` and `read_write_copy`
+
+Open the two source code files and investigate them.
+You will notice that the `open()` system call has the following prototype `int open(const char *pathname, int flags)`.
+The argument `flags` must include one of the following access modes: `O_RDONLY`, `O_WRONLY`, or `O_RDWR` - indicating that the file is opened in read-only, write-only, or read/write mode.
+You can add an additional flag - `O_CREAT` - that will create a new file with `pathname` if the file does not already exist.
+This is only the case when opening the file for writing (`O_WRONLY` or `O_RDWR`).
+If `O_CREAT` is set, a third argument `mode_t mode` is required for the `open()` syscall.
+The `mode` argument specifies the permissions of the newly created file.
+For example:
+
+```c
+// If DST_FILENAME exists it will be open in read/write mode and truncated to length 0
+// If DST_FILENAME does not exist, a file at the path DST_FILENAME will be create with 644 permissions
+dst_fd = open(DST_FILENAME, O_RDWR | O_CREAT | O_TRUNC, 0644);
+```
 
 Let's generate the input file:
 
@@ -566,41 +579,34 @@ and let's build the two executable files:
 student@os:~/.../lab/support/copy$ make
 ```
 
-and run them:
+Run the `benchmark_cp.sh` script:
 
 ```console
-student@os:~/.../lab/support/copy$ ./mmap_copy
-time passed 22840 microseconds
+student@os:~/.../lab/support/copy$ ./benchmark_cp.sh
+Benchmarking mmap_copy on in.dat
+time passed 54015 microseconds
 
-student@os:~/.../lab/support/copy$ ./mmap_copy
-time passed 33942 microseconds
-
-student@os:~/.../lab/support/copy$ ./mmap_copy
-time passed 25213 microseconds
-
-student@os:~/.../lab/support/copy$ ./read_write_copy
-time passed 24824 microseconds
-
-student@os:~/.../lab/support/copy$ ./read_write_copy
-time passed 24232 microseconds
-
-student@os:~/.../lab/support/copy$ ./read_write_copy
-time passed 25131 microseconds
+Benchmarking read_write_copy on in.dat
+time passed 42011 microseconds
 ```
 
-As you can see, there isn't a difference between the two approaches.
+Run the script a few more times.
+As you can see, there isn't much of a difference between the two approaches.
 Although we would have expected the use of multiple system calls to cause overhead, it's too little compared to the memory copying overhead.
+
+If you inspect `benchmark_cp.sh`, you will notice a weird-looking command `sh -c "sync; echo 3 > /proc/sys/vm/drop_caches"`.
+This is used to disable a memory optimization that the kernel does.
+It's called "buffer cache" and it's a mechanism by which the kernel caches data blocks from recently accessed files in memory.
+You will get more detailed information about this in the I/O chapter.
 
 Browse the two source code files (`mmap_copy.c` and `read_write_copy.c`) for a glimpse on how the two types of copies are implemented.
 
-### Quiz
-
-TODO
+[Quiz](../quiz/mmap-file.md)
 
 ### Practice
 
-1. Use a diffent value for `BUFSIZ` and see if that affects the comparison between the two executables.
+1. Use a different value for `BUFSIZE` and see if that affects the comparison between the two executables.
 
 1. Add a `sleep()` call to the `mmap_copy.c` file **after** the files were mapped.
    Rebuild the program and run it.
-   On a different console use `pmap` to view the two new memory regions that were added to the process, by mapping the `in.dat` and `out.dat` files.
+   On a different console, use `pmap` to view the two new memory regions that were added to the process, by mapping the `in.dat` and `out.dat` files.
