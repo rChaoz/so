@@ -20,11 +20,11 @@ size_t strlen(const char *str);
 int strcmp(const char *str1, const char *str2);
 int strncmp(const char *str1, const char *str2, size_t len);
 
-char *strchr(const char *str, int c);
-char *strrchr(const char *str, int c);
+const char *strchr(const char *str, int c);
+const char *strrchr(const char *str, int c);
 
-char *strstr(const char *str1, const char *str2);
-char *strrstr(const char *str1, const char *str2);
+const char *strstr(const char *str1, const char *str2);
+const char *strrstr(const char *str1, const char *str2);
 
 void *memcpy(void *destination, const void *source, size_t num);
 void *memset(void *source, int value, size_t num);
