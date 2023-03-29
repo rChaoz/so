@@ -5,8 +5,6 @@
 #include <stdarg.h>
 #include <errno.h>
 
-int close(int fd)
-{
-	/* TODO: Implement close(). */
-	return -1;
+int close(int fd) {
+	return syscall_errhandle(__NR_close, fd);
 }

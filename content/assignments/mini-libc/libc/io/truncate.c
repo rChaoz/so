@@ -2,10 +2,7 @@
 
 #include <unistd.h>
 #include <internal/syscall.h>
-#include <errno.h>
 
-int truncate(const char *path, off_t length)
-{
-	/* TODO: Implement truncate(). */
-	return -1;
+int truncate(const char *path, off_t length) {
+	return syscall_errhandle(__NR_truncate, path, length);
 }

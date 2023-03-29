@@ -4,8 +4,6 @@
 #include <internal/syscall.h>
 #include <errno.h>
 
-int ftruncate(int fd, off_t length)
-{
-	/* TODO: Implement ftruncate(). */
-	return -1;
+int ftruncate(int fd, off_t length) {
+	return syscall_errhandle(__NR_ftruncate, fd, length);
 }

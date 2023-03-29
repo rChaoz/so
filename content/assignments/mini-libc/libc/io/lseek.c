@@ -4,8 +4,6 @@
 #include <internal/syscall.h>
 #include <errno.h>
 
-off_t lseek(int fd, off_t offset, int whence)
-{
-	/* TODO: Implement lseek(). */
-	return -1;
+off_t lseek(int fd, off_t offset, int whence) {
+	return syscall_errhandle(__NR_lseek, fd, offset, whence);
 }

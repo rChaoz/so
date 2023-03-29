@@ -2,10 +2,8 @@
 
 #include <sys/stat.h>
 #include <fcntl.h>
-#include <errno.h>
+#include <internal/syscall.h>
 
-int stat(const char *restrict path, struct stat *restrict buf)
-{
-	/* TODO: Implement stat(). */
-	return -1;
+int stat(const char *restrict path, struct stat *restrict buf) {
+	return syscall_errhandle(__NR_stat, path, buf);
 }
