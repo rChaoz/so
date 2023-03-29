@@ -9,6 +9,7 @@ extern "C" {
 
 #include <internal/io.h>
 #include <internal/types.h>
+#include "time.h"
 
 #define SEEK_SET 0
 #define SEEK_CUR 1
