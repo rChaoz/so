@@ -1,0 +1,4 @@
+In rezolvarea temei, am folosit documentatia syscallurilor de aici:
+https://chromium.googlesource.com/chromiumos/docs/+/master/constants/syscalls.md#x86_64-64_bit
+
+Cat si referintele de acolo (click pe 'man/' la fiecare intrare).
