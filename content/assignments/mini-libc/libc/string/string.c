@@ -92,7 +92,7 @@ const char *strstr(const char *haystack, const char *needle) {
 
 const char *strrstr(const char *haystack, const char *needle) {
     size_t len = strlen(needle);
-    const char *p = haystack - len;
+    const char *p = haystack + strlen(haystack) - len;
     if (p < haystack) return NULL;
 
     while (strncmp(p, needle, len) != 0) if (p-- == haystack) return NULL;
