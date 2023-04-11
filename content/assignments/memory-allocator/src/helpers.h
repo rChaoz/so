@@ -2,6 +2,7 @@
 
 #pragma once
 
+#define _GNU_SOURCE
 #include <errno.h>
 #include <limits.h>
 #include <stddef.h>
@@ -37,3 +38,4 @@ typedef struct block_meta {
 /* Block metadata status values */
 #define STATUS_FREE   0
 #define STATUS_ALLOC  1
+#define STATUS_MAPPED 2

@@ -1,4 +1,5 @@
 #include "mmap_alloc.h"
+#include "brk_alloc.h"
 
 static block_t *first;
 
@@ -20,6 +21,7 @@ void *mmap_alloc(size_t size) {
     block_t *block = mmap(NULL, size + BLOCK_META_SIZE, PROT_READ | PROT_WRITE, MAP_PRIVATE | MAP_ANONYMOUS, -1, 0);
     DIE(block == MAP_FAILED, "mmap failed");
     block->size = size;
+    block->status = STATUS_MAPPED;
     // Add it to the list
     if (first == NULL) first = block;
     else {
@@ -37,12 +39,27 @@ void *mmap_realloc(void *ptr, size_t size) {
     if (before == ERROR) return NULL;
     block_t *block = before == NULL ? first : before->next;
     block_t *after = block->next;
+
+    // If new size is smaller than MMAP_THRESHOLD, use brk_alloc instead
+    if (size < MMAP_THRESHOLD) {
+        void *adr = brk_alloc(size);
+        // Copy data to new location
+        memcpy(adr, PAYLOAD(block), size);
+        // Deallocate mmap memory and remove it from list
+        DIE(munmap(block, block->size + BLOCK_META_SIZE)  == -1, "munmap failed");
+        if (before != NULL) before->next = after;
+        else first = after;
+        return adr;
+    }
+
     // Change its size with mremap
-    block_t *new = (void *) syscall(25, ptr, block->size, size, 1);
+    block_t *new = mremap(block, block->size + BLOCK_META_SIZE, size, MREMAP_MAYMOVE);
     DIE(new == MAP_FAILED, "mremap failed");
+    new->size = size;
     // Put new block in list in old one's place
-    before->next = new;
-    new->next = after;
+    if (before != NULL) before->next = new;
+    else first = new;
+    new->next = after; // *shouldn't* be necessary as next value shouldn't be changed by mremap, but still
     // Return pointer to payload
     return PAYLOAD(new);
 }
