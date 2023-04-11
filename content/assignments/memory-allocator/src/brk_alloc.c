@@ -71,7 +71,7 @@ void *brk_alloc(size_t size) {
     // I1f this is the first allocation, allocate 128kb and align memory block
     if (initial == NULL) {
         initial = sbrk(MMAP_THRESHOLD);
-        DIE(initial == ERROR, "sbrk failed");
+        DIE(initial == ERROR, "brk failed");
         long align = ((long) initial) % 8;
         if (align) align = 8 - align;
         first = last = initial + align;
@@ -87,13 +87,13 @@ void *brk_alloc(size_t size) {
     if (last->status == STATUS_FREE) {
         last->status = STATUS_ALLOC;
         // NOLINT(cppcoreguidelines-narrowing-conversions)
-        DIE(sbrk(size - last->size) == ERROR, "sbrk failed");
+        DIE(sbrk(size - last->size) == ERROR, "brk failed");
         last->size = size;
         return PAYLOAD(last);
     }
     // Else allocate create new block
     block = sbrk(BLOCK_META_SIZE + size);
-    DIE(block == ERROR, "sbrk failed");
+    DIE(block == ERROR, "brk failed");
     block->size = size;
     block->status = STATUS_ALLOC;
     // add it to end of list
@@ -133,7 +133,17 @@ void *brk_realloc(void *ptr, size_t size) {
         return PAYLOAD(split_block(coalesced, size));
     }
 
-    // If that fails, obtaing new block
+    // We need to allocate more memory
+
+    // Extend block if possible
+    if (block == last) {
+        // NOLINT(cppcoreguidelines-narrowing-conversions)
+        DIE(sbrk(size - block->size) == ERROR, "brk failed");
+        block->size = size;
+        return PAYLOAD(block);
+    }
+
+    // Otherwise, obtain new block
     void *new = brk_alloc(size);
     // Copy all data to new block
     memcpy(new, PAYLOAD(block), size);

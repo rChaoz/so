@@ -53,9 +53,10 @@ void *mmap_realloc(void *ptr, size_t size) {
     }
 
     // Change its size with mremap
-    block_t *new = mremap(block, block->size + BLOCK_META_SIZE, size, MREMAP_MAYMOVE);
+    block_t *new = mremap(block, block->size + BLOCK_META_SIZE, size + BLOCK_META_SIZE, MREMAP_MAYMOVE);
     DIE(new == MAP_FAILED, "mremap failed");
     new->size = size;
+    new->status = STATUS_MAPPED;
     // Put new block in list in old one's place
     if (before != NULL) before->next = new;
     else first = new;
