@@ -3,8 +3,7 @@ CPPFLAGS = -I../utils
 CFLAGS = -fPIC -Wall -Wextra -g
 LDFLAGS = -shared
 
-# TODO: Add additional sources
-SRCS = osmem.c ../utils/printf.c
+SRCS = osmem.c ../utils/printf.c mmap_alloc.c brk_alloc.c
 OBJS = $(SRCS:.c=.o)
 TARGET = libosmem.so
 

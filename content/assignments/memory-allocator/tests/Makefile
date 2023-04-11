@@ -27,7 +27,7 @@ check:
 	make -C $(SRC_PATH) clean
 	make clean
 	make -i SRC_PATH=$(SRC_PATH)
-	SRC_PATH=$(SRC_PATH) python checker.py
+	SRC_PATH=$(SRC_PATH) python3 checker.py
 
 lint:
 	-cd .. && checkpatch.pl -f src/*.c tests/src/*.c
