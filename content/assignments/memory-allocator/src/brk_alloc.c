@@ -1,44 +1,10 @@
 #include "brk_alloc.h"
+#include "mmap_alloc.h"
 
 #define BLOCK(payload) ((block_t*)(((void*)payload) - BLOCK_META_SIZE))
 
 static void *initial = NULL;
 static block_t *first = NULL, *last = NULL;
-
-// Allocate another 128KB for the heap
-static block_t *increase_heap() {
-    // allocate 128KB
-    void *r = sbrk(MMAP_THRESHOLD);
-    DIE(r == ERROR, "sbrk failed");
-    // if this is the first allocation, align memory block
-    if (initial == NULL) {
-        initial = r;
-        long align = ((long) r) % 8;
-        if (align) align = 8 - align;
-        first = last = r + align;
-        first->size = MMAP_THRESHOLD - BLOCK_META_SIZE - align;
-        first->next = NULL;
-        first->status = STATUS_FREE;
-        return first;
-    }
-    // otherwise, previous block is aligned and has size multiple of 8, so new block is also aligned
-
-    // if last block is free, just increase its size
-    if (last->status == STATUS_FREE) {
-        last->size += MMAP_THRESHOLD;
-        return last;
-    }
-    // else create new block
-    block_t *block = r;
-    block->size = MMAP_THRESHOLD - BLOCK_META_SIZE;
-    block->next = NULL;
-    block->status = STATUS_FREE;
-    // add it to end of list
-    last->next = block;
-    last = block;
-
-    return block;
-}
 
 // Find first memory block that has at least 'size' bytes available
 static block_t *find_free_block(size_t size) {
@@ -71,68 +37,113 @@ static void *split_block(block_t *block, size_t size) {
     return block;
 }
 
-// Obtain a memory block of at least 'size' bytes, allocating memory if needed
-static block_t *alloc_block(size_t size) {
-    block_t *block = find_free_block(size);
-    if (block == NULL) {
-        // allocate more memory
-        block = increase_heap();
-    }
-    // split block to only use 'size' bytes
-    return split_block(block, size);
-}
-
 // Coalesce a block with the surrounding block(s), if possible
-static void coalesce(block_t *block) {
-    // First, coalesce with all free blocks to its RIGHT
-    block_t *next = block->next;
-    while (next != NULL && next->status == STATUS_FREE) {
-        block->next = next->next;
-        block->size += next->size + BLOCK_META_SIZE;
-        next = block->next;
+// Only need to check distance 1 in every direction because we call this function on every free;
+// it's impossible for 2 consecutive free blocks to exist in the list
+static block_t *coalesce(block_t *block) {
+    // First, coalesce with a possible free block on its RIGHT
+    block_t *right = block->next;
+    if (right != NULL && right->status == STATUS_FREE) {
+        block->next = right->next;
+        block->size += right->size + BLOCK_META_SIZE;
+        if (right == last) last = block;
     }
-    // don't forget to update 'last' if needed
-    if (next == NULL) last = block;
-    // TODO Coalesce left?
+    if (block == first) return block;
+
+    // Next, coalesce with a possible free block on its LEFT
+    block_t *left = first;
+    while (left->next != block) left = left->next;
+    if (left->status != STATUS_FREE) return block;
+    left->next = block->next;
+    left->size += block->size + BLOCK_META_SIZE;
+    left->status = block->status; // keep status
+
+    if (last == block) last = left;
+    return left;
 }
-
-
-
 
 // Allocate size bytes on the heap
 void *brk_alloc(size_t size) {
-    // Try to find an existing block to use
+    // Check if an existing block is big enough
     block_t *block = find_free_block(size);
-    // Otherwise, allocate more memory
-    if (block == NULL) block = increase_heap();
-    // Return slice of the block just big enough
-    return PAYLOAD(split_block(block, size));
+    if (block != NULL) return PAYLOAD(split_block(block, size));
+    // Increase heap size
+
+    // I1f this is the first allocation, allocate 128kb and align memory block
+    if (initial == NULL) {
+        initial = sbrk(MMAP_THRESHOLD);
+        DIE(initial == ERROR, "sbrk failed");
+        long align = ((long) initial) % 8;
+        if (align) align = 8 - align;
+        first = last = initial + align;
+        first->size = MMAP_THRESHOLD - BLOCK_META_SIZE - align;
+        first->next = NULL;
+        first->status = STATUS_FREE;
+        // Return only how much is needed from this large memory block
+        return PAYLOAD(split_block(first, size));
+    }
+    // Otherwise, previous block is aligned and has size multiple of 8, so new block is always aligned
+
+    // If last block is free, just increase its size to be enough
+    if (last->status == STATUS_FREE) {
+        last->status = STATUS_ALLOC;
+        // NOLINT(cppcoreguidelines-narrowing-conversions)
+        DIE(sbrk(size - last->size) == ERROR, "sbrk failed");
+        last->size = size;
+        return PAYLOAD(last);
+    }
+    // Else allocate create new block
+    block = sbrk(BLOCK_META_SIZE + size);
+    DIE(block == ERROR, "sbrk failed");
+    block->size = size;
+    block->status = STATUS_ALLOC;
+    // add it to end of list
+    last->next = block;
+    last = block;
+    block->next = NULL;
+
+    return PAYLOAD(block);
 }
 
 // Reallocate bytes on the heap
 void *brk_realloc(void *ptr, size_t size) {
     block_t *block = BLOCK(ptr);
     if (block->status == STATUS_FREE) return NULL;
-    else if (block->status != STATUS_ALLOC) return ERROR;
+    DIE(block->status != STATUS_ALLOC, "invalid pointer");
     // If we are reducing size, just split existing block
     if (size < block->size) return PAYLOAD(split_block(block, size));
 
+    // Special case: brk realloc called with a new size greater than MMAP_THRESHOLD
+    if (size >= MMAP_THRESHOLD) {
+        // Allocate block using mmap
+        void *new = mmap_alloc(size);
+        // Copy old block to new mmap block
+        memcpy(new, PAYLOAD(block), block->size);
+        // Free old block
+        block->status = STATUS_FREE;
+        coalesce(block);
+        return new;
+    }
+
     // Try to coalesce block with next block(s) first
-    coalesce(block);
-    if (block->size >= size) return PAYLOAD(split_block(block, size));
+    block_t *coalesced = coalesce(block);
+    if (block->size >= size) {
+        // If it was coalesced with a block on its left, data needs to be moved
+        if (coalesced != block) memmove(PAYLOAD(coalesced), PAYLOAD(block), block->size);
+        return PAYLOAD(split_block(coalesced, size));
+    }
 
     // If that fails, obtaing new block
-    block_t *new = alloc_block(size);
+    void *new = brk_alloc(size);
     // Copy all data to new block
-    memcpy(PAYLOAD(new), PAYLOAD(block), size);
+    memcpy(new, PAYLOAD(block), size);
     // Mark old block as free (no need to coalesce, already tried)
     block->status = STATUS_FREE;
 
-    return PAYLOAD(new);
+    return new;
 }
 
 // Free memory that was allocated with brk_alloc. Returns 1 for success, 0 for no action taken (pointer to already freed memory)
-// and -1 for eror (invalid pointer)
 int brk_free(void *ptr) {
     block_t *block = BLOCK(ptr);
     if (block->status == STATUS_FREE) return 0; // memory already freed
@@ -141,5 +152,6 @@ int brk_free(void *ptr) {
         block->status = STATUS_FREE;
         coalesce(block);
         return 1; // success
-    } else return -1; // invalid pointer
+    } else
+        DIE(1, "invalid pointer");
 }

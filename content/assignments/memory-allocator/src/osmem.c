@@ -16,7 +16,7 @@ void os_free(void *ptr) {
     // first, test if block is large (mmapped)
     if (mmap_free(ptr)) return;
     // if not, free with brk
-    DIE(brk_free(ptr) < 0, "invalid pointer");
+    brk_free(ptr);
 }
 
 void *os_calloc(size_t nmemb, size_t size) {
@@ -38,7 +38,5 @@ void *os_realloc(void *ptr, size_t size) {
     void *r = mmap_realloc(ptr, size);
     if (r) return r;
     // next, try the brk realloc
-    r = brk_realloc(ptr, size);
-    DIE(r == ERROR, "invalid pointer");
-    return r;
+    return brk_realloc(ptr, size);
 }
