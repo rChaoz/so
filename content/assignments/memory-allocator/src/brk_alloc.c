@@ -20,8 +20,6 @@ static block_t *find_free_block(size_t size) {
 // block must already have at least 'size' bytes. block will be marked as 'allocated'
 static void *split_block(block_t *block, size_t size) {
     block->status = STATUS_ALLOC;
-    // align size to 8 bytes
-    if (size % 8) size = (size / 8 + 1) * 8;
     // check if we can split
     if (block->size <= size + BLOCK_META_SIZE) return block; // no split
     // split block
@@ -64,6 +62,7 @@ static block_t *coalesce(block_t *block) {
 
 // Allocate size bytes on the heap
 void *brk_alloc(size_t size) {
+    ALIGN(size);
     // Check if an existing block is big enough
     block_t *block = find_free_block(size);
     if (block != NULL) return PAYLOAD(split_block(block, size));
@@ -82,7 +81,7 @@ void *brk_alloc(size_t size) {
         // Return only how much is needed from this large memory block
         return PAYLOAD(split_block(first, size));
     }
-    // Otherwise, previous block is aligned and has size multiple of 8, so new block is always aligned
+    // Otherwise, previous block is aligned and has size multiple of 8, so new block start is always aligned
 
     // If last block is free, just increase its size to be enough
     if (last->status == STATUS_FREE) {
@@ -107,14 +106,15 @@ void *brk_alloc(size_t size) {
 
 // Reallocate bytes on the heap
 void *brk_realloc(void *ptr, size_t size) {
+    ALIGN(size);
     block_t *block = BLOCK(ptr);
     if (block->status == STATUS_FREE) return NULL;
     DIE(block->status != STATUS_ALLOC, "invalid pointer");
     // If we are reducing size, just split existing block
     if (size < block->size) return PAYLOAD(split_block(block, size));
 
-    // Special case: brk realloc called with a new size greater than MMAP_THRESHOLD
-    if (size >= MMAP_THRESHOLD) {
+    // Special case: brk realloc called with a new size greater than MAP_THRESHOLD
+    if (size + BLOCK_META_SIZE >= MMAP_THRESHOLD) {
         // Allocate block using mmap
         void *new = mmap_alloc(size);
         // Copy old block to new mmap block

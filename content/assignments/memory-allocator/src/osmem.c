@@ -7,7 +7,7 @@
 
 void *os_malloc(size_t size) {
     if (size == 0) return NULL;
-    else if (size >= MMAP_THRESHOLD) return mmap_alloc(size);
+    else if (size + BLOCK_META_SIZE >= MMAP_THRESHOLD) return mmap_alloc(size);
     else return brk_alloc(size);
 }
 
@@ -22,7 +22,7 @@ void os_free(void *ptr) {
 void *os_calloc(size_t nmemb, size_t size) {
     size *= nmemb;
     if (size == 0) return NULL;
-    if (size >= MMAP_THRESHOLD) return mmap_alloc(size); // mmap already sets memory to 0
+    if (size + BLOCK_META_SIZE >= PAGE_SIZE) return mmap_alloc(size); // mmap already sets memory to 0
     void *ptr = brk_alloc(size);
     memset(ptr, 0, size);
     return ptr;

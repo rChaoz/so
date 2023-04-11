@@ -16,6 +16,7 @@ block_t *find_before(void *ptr) {
 
 // Allocate memory with mmap
 void *mmap_alloc(size_t size) {
+    ALIGN(size);
     block_t *block = mmap(NULL, size + BLOCK_META_SIZE, PROT_READ | PROT_WRITE, MAP_PRIVATE | MAP_ANONYMOUS, -1, 0);
     DIE(block == MAP_FAILED, "mmap failed");
     block->size = size;
@@ -30,6 +31,7 @@ void *mmap_alloc(size_t size) {
 
 // Reallocate memory with mremap (returns NULL if pointer is not alloc'd with mmap_alloc)
 void *mmap_realloc(void *ptr, size_t size) {
+    ALIGN(size);
     // Find block
     block_t *before = find_before(ptr);
     if (before == ERROR) return NULL;
