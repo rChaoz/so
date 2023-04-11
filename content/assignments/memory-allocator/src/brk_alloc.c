@@ -6,14 +6,18 @@
 static void *initial = NULL;
 static block_t *first = NULL, *last = NULL;
 
-// Find first memory block that has at least 'size' bytes available
-static block_t *find_free_block(size_t size) {
-    block_t *block = first;
+// Find the best memory block that has at least 'size' bytes available
+static block_t *find_best_block(size_t size) {
+    block_t *block = first, *best = NULL;
+    size_t delta = UINT_MAX;
     while (block) {
-        if (block->status == STATUS_FREE && block->size >= size) return block;
+        if (block->status == STATUS_FREE && block->size >= size && block->size - size < delta) {
+            best = block;
+            delta = block->size - size;
+        }
         block = block->next;
     }
-    return NULL;
+    return best;
 }
 
 // split a free memory block if possible, return block of at least 'size' bytes
@@ -46,6 +50,7 @@ static block_t *coalesce(block_t *block) {
         block->size += right->size + BLOCK_META_SIZE;
         if (right == last) last = block;
     }
+
     if (block == first) return block;
 
     // Next, coalesce with a possible free block on its LEFT
@@ -64,7 +69,7 @@ static block_t *coalesce(block_t *block) {
 void *brk_alloc(size_t size) {
     ALIGN(size);
     // Check if an existing block is big enough
-    block_t *block = find_free_block(size);
+    block_t *block = find_best_block(size);
     if (block != NULL) return PAYLOAD(split_block(block, size));
     // Increase heap size
 
@@ -127,7 +132,7 @@ void *brk_realloc(void *ptr, size_t size) {
 
     // Try to coalesce block with next block(s) first
     block_t *coalesced = coalesce(block);
-    if (block->size >= size) {
+    if (coalesced->size >= size) {
         // If it was coalesced with a block on its left, data needs to be moved
         if (coalesced != block) memmove(PAYLOAD(coalesced), PAYLOAD(block), block->size);
         return PAYLOAD(split_block(coalesced, size));
@@ -146,7 +151,7 @@ void *brk_realloc(void *ptr, size_t size) {
     // Otherwise, obtain new block
     void *new = brk_alloc(size);
     // Copy all data to new block
-    memcpy(new, PAYLOAD(block), size);
+    memcpy(new, PAYLOAD(block), block->size);
     // Mark old block as free (no need to coalesce, already tried)
     block->status = STATUS_FREE;
 
