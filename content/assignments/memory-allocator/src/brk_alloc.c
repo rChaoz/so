@@ -21,7 +21,7 @@ static block_t *find_best_block(size_t size) {
 }
 
 // split a free memory block if possible, return block of at least 'size' bytes
-// block must already have at least 'size' bytes. block will be marked as 'allocated'
+// block must already have at least 'size' bytes. block will be marked as 'allocated', and split block (if it exists) as 'free'
 static void *split_block(block_t *block, size_t size) {
     block->status = STATUS_ALLOC;
     // check if we can split
@@ -42,7 +42,7 @@ static void *split_block(block_t *block, size_t size) {
 // Coalesce a block with the surrounding block(s), if possible
 // Only need to check distance 1 in every direction because we call this function on every free;
 // it's impossible for 2 consecutive free blocks to exist in the list
-static block_t *coalesce(block_t *block) {
+static void coalesce(block_t *block) {
     // First, coalesce with a possible free block on its RIGHT
     block_t *right = block->next;
     if (right != NULL && right->status == STATUS_FREE) {
@@ -51,18 +51,17 @@ static block_t *coalesce(block_t *block) {
         if (right == last) last = block;
     }
 
-    if (block == first) return block;
+    // No point in coalescing to the left if block isn't empty, its contents would have to be moved
+    if (block == first || block->status != STATUS_FREE) return;
 
     // Next, coalesce with a possible free block on its LEFT
     block_t *left = first;
     while (left->next != block) left = left->next;
-    if (left->status != STATUS_FREE) return block;
+    if (left->status != STATUS_FREE) return;
     left->next = block->next;
     left->size += block->size + BLOCK_META_SIZE;
-    left->status = block->status; // keep status
 
     if (last == block) last = left;
-    return left;
 }
 
 // Allocate size bytes on the heap
@@ -131,12 +130,8 @@ void *brk_realloc(void *ptr, size_t size) {
     }
 
     // Try to coalesce block with next block(s) first
-    block_t *coalesced = coalesce(block);
-    if (coalesced->size >= size) {
-        // If it was coalesced with a block on its left, data needs to be moved
-        if (coalesced != block) memmove(PAYLOAD(coalesced), PAYLOAD(block), block->size);
-        return PAYLOAD(split_block(coalesced, size));
-    }
+    coalesce(block);
+    if (block->size >= size) return PAYLOAD(split_block(block, size));
 
     // We need to allocate more memory
 
@@ -152,8 +147,9 @@ void *brk_realloc(void *ptr, size_t size) {
     void *new = brk_alloc(size);
     // Copy all data to new block
     memcpy(new, PAYLOAD(block), block->size);
-    // Mark old block as free (no need to coalesce, already tried)
+    // Mark old block as free
     block->status = STATUS_FREE;
+    coalesce(block);
 
     return new;
 }
