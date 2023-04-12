@@ -46,7 +46,7 @@ void *mmap_realloc(void *ptr, size_t size) {
         // Copy data to new location
         memcpy(adr, PAYLOAD(block), size);
         // Deallocate mmap memory and remove it from list
-        DIE(munmap(block, block->size + BLOCK_META_SIZE)  == -1, "munmap failed");
+        DIE(munmap(block, block->size + BLOCK_META_SIZE) == -1, "munmap failed");
         if (before != NULL) before->next = after;
         else first = after;
         return adr;
