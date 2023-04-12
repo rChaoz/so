@@ -72,7 +72,7 @@ void *brk_alloc(size_t size) {
     if (block != NULL) return PAYLOAD(split_block(block, size));
     // Increase heap size
 
-    // I1f this is the first allocation, allocate 128kb and align memory block
+    // If this is the first allocation, allocate 128kb and align memory block
     if (initial == NULL) {
         initial = sbrk(MMAP_THRESHOLD);
         DIE(initial == ERROR, "brk failed");
@@ -87,7 +87,7 @@ void *brk_alloc(size_t size) {
     }
     // Otherwise, previous block is aligned and has size multiple of 8, so new block start is always aligned
 
-    // If last block is free, just increase its size to be enough
+    // If last block is free, increase its size to be just enough
     if (last->status == STATUS_FREE) {
         last->status = STATUS_ALLOC;
         // NOLINT(cppcoreguidelines-narrowing-conversions)

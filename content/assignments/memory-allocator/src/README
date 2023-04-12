@@ -1,0 +1,56 @@
+Trandafir Matei-Paul, 336CB
+
+Rezolvarea temei este impartita in 3 fisiere:
+- brk_alloc.c  -> contine alocarea de memorie folosind brk
+- mmap_alloc.c -> contine alocarea de memorie folosind mmap
+
+Atat brk_alloc cat si mmap_alloc folosesc liste inlantuite pentru a retine zonele de memorie
+alocate (si libere, in cazul lui brk_alloc). Fiecare fisier are lista lui inlanuita, iar cele
+2 liste nu se amesteca.
+
+== OSMEM ==
+Pentru malloc/calloc, se compara marimea ceruta MMA__THRESHOLD, respectiv getpagesize(), pentru
+a se determina care alocare se va folosi. Pentru free/realloc, mai intai se verifica daca
+pointer-ul se afla in lista mmap, apoi in cea brk. Tot in 'osmem' sunt tratate cazurile simple,
+cum ar fi: malloc/calloc de lungime 0, realloc de NULL -> malloc, etc.
+
+== MMAP_ALLOC ==
+Acest fisier are o lista simplu inlantuita de structuri de tip block, care sunt formate din
+block_meta + payload. Lungimea payload-ului este tot timpul aproximata prin adaos la un multiplu
+de 8. Similar cu tema 1, acest fisier se foloseste de apelurile de sistem mmap, munmap si mremap
+pentru a gestiona zonele de memorie. Exceptie se intampla atunci cand se doreste realloc a unei
+zone alocata cu mmap la o marime mai mica (sub MMAP_THRESHOLD). In acest caz, se aloca noua zona
+mica de memorie prin apel la 'brk_alloc' si se copiaza si se elibereaza zona existenta de tip mmap.
+
+== BRK_ALLOC ==
+Zonele de memorie in acest fisier sunt gestionate cu o lista simplu inlantuita, insa la care se
+cunoaste si coada (last), spre deosebire de abordarea de la mmap. Pentru fiecare zona se cunoaste
+si daca este libera (STATUS_FREE) pentru a fi alocata, sau deja in folosire (STATUS_ALLOC). Pentru
+implementarea functiilor de (dez)alocare, mai intai sunt definite functii ajutatoare:
+- find_best_block - parcurge lista si gaseste cel mai mic bloc de cel putin marimea ceruta
+- split_block - folosita la alocare, pentru a pastra dintr-un bloc de memorie fix cat e nevoie
+  (parametrul size). Restul de payload al blocului se va transforma intr-un nou bloc de memorie,
+  gata sa fie alocat (FREE). Spargerea nu se face daca nu e destul spatiu pentru inca un
+  block_meta + 1 byte. Primul bloc este cel care va fi folosit (se marcheaza cu ALLOC), iar al
+  doilea "ramane" (se marcheaza cu FREE).
+- coalesce - pentru un bloc, verifica daca poate fi unit cu blocurile adiacente (stanga si
+  dreapta). Daca da, este unit. Nu trebuie verificat recursiv (i.e. si blocurile urmatoare, inca
+  un pas mai la dreapta/stanga) deoarce 'coalesce' este apelat la fiecare free(), deci este
+  imposibil sa existe 2 blocuri de memorie goale, adiacente, in lista. In cazul in care 'coalesce'
+  este apelata din 'realloc', nu dorim sa unim blocul cu cel din stanga, pentru ca oricum ar trebui
+  transferate datele (cu memmove) spre stanga, iar daca tot tranferam datele, am putea gasi, poate,
+  un bloc mai bun (cu find_best_block).
+
+Apoi, vin functiile de baza:
+- brk_alloc - foloseste find_best_block pentru a incercca sa refoloseasca un bloc de memorie deja
+  alocat. Daca nu se poate, aloca el memorie. Prima alocare este intotdeauna de 128kb si este
+  aliniata la 8 bytes, iar marimea oricarei alocari este si ea aliniata la 8 bytes. Alocarea se
+  face cu brk. Se prefera sa se extinda un bloc existent, daca exista. Daca nu, se aloca un bloc
+  nou si se adauga la lista, si se intoarce adresa payload-ului.
+- brk_realloc - mai intai, se ocupa de 2 cauzuri mai speciale/usoare: micsorarea unei zone de
+  memoie (se face doar 'split_block'), si alocarea unei zone mari (>=MMAP_THRESHOLD), caz in care
+  se apeleaza functia de alocare din 'mmap_alloc', se copiaza datele, si se elibereaza zona veche.
+  Daca se doreste marirea zonei de memorie, mai intai se face 'coalesce' cu blocurile fix urmatoare
+  blocului existent. Daca nu se poate, se aloca un bloc nou cu 'brk_alloc', se copiaza datele, si
+  se elibereaza zona veche.
+- free - elibereaza o zona (block) de memorie. Se marcheaza cu STATUS_FREE si apeleaza 'coalesce'.

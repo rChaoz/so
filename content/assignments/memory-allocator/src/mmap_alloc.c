@@ -41,7 +41,7 @@ void *mmap_realloc(void *ptr, size_t size) {
     block_t *after = block->next;
 
     // If new size is smaller than MMAP_THRESHOLD, use brk_alloc instead
-    if (size < MMAP_THRESHOLD) {
+    if (size + BLOCK_META_SIZE < MMAP_THRESHOLD) {
         void *adr = brk_alloc(size);
         // Copy data to new location
         memcpy(adr, PAYLOAD(block), size);
