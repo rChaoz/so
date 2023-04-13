@@ -205,7 +205,7 @@ def parse_ltrace_output(ltrace_output: str):
                 if offset:
                     mapped_addresses[libcall.ret] += f" + {hex(offset)}"
             # Heap addresses
-            else:
+            elif libcall.ret not in mapped_addresses:
                 heap_addresses[libcall.ret] = "HeapStart + " + \
                     hex(int(libcall.ret, 16) - heap_start)
 
