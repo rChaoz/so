@@ -52,15 +52,18 @@ void *mmap_realloc(void *ptr, size_t size) {
         return adr;
     }
 
-    // Change its size with mremap
-    block_t *new = mremap(block, block->size + BLOCK_META_SIZE, size + BLOCK_META_SIZE, MREMAP_MAYMOVE);
-    DIE(new == MAP_FAILED, "mremap failed");
+    // Allocate new block and copy data
+    block_t *new = mmap(NULL, size + BLOCK_META_SIZE, PROT_READ | PROT_WRITE, MAP_PRIVATE | MAP_ANONYMOUS, -1, 0);
+    DIE(new == MAP_FAILED, "mmap failed");
     new->size = size;
     new->status = STATUS_MAPPED;
+    memcpy(PAYLOAD(new), PAYLOAD(block), new->size > block->size ? block->size : new->size);
     // Put new block in list in old one's place
     if (before != NULL) before->next = new;
     else first = new;
-    new->next = after; // *shouldn't* be necessary as next value shouldn't be changed by mremap, but still
+    new->next = after;
+    // Free old memory block
+    DIE(munmap(block, block->size + BLOCK_META_SIZE) == -1, "munmap failed");
     // Return pointer to payload
     return PAYLOAD(new);
 }
