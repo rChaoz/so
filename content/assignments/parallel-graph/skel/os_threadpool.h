@@ -20,6 +20,7 @@ typedef struct {
     pthread_t *threads;
 
     os_task_queue_t *tasks;
+    pthread_mutex_t taskLock;
 } os_threadpool_t;
 
 os_task_t *task_create(void *arg, void (*f)(void *));
