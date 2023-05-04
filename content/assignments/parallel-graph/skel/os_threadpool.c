@@ -14,31 +14,28 @@ os_task_t *task_create(void *arg, void (*f)(void *)) {
 }
 
 /* Add a new task to threadpool task queue */
-int add_task_in_queue(os_threadpool_t *tp, os_task_t *t) {
-    if (tp->num_tasks == tp->max_tasks) return 0; // quick check
+void add_task_in_queue(os_threadpool_t *tp, os_task_t *t) {
     pthread_mutex_lock(&tp->taskLock);
-    if (tp->num_tasks == tp->max_tasks) {
-        // ensure we really don't add too many tasks
-        pthread_mutex_unlock(&tp->taskLock);
-        return 0;
-    }
 
     os_task_queue_t *task = malloc(sizeof(os_task_queue_t));
     task->task = t;
     task->next = tp->tasks;
     tp->tasks = task;
-    ++tp->num_tasks;
 
     pthread_mutex_unlock(&tp->taskLock);
-    return 1;
 }
 
 /* Get the head of task queue from threadpool */
 os_task_t *get_task(os_threadpool_t *tp) {
-    if (tp->tasks == NULL) return NULL;
+    pthread_mutex_lock(&tp->taskLock);
+    if (tp->tasks == NULL) {
+        pthread_mutex_unlock(&tp->taskLock);
+        return NULL;
+    }
     os_task_queue_t *task = tp->tasks;
     tp->tasks = task->next;
-    --tp->num_tasks;
+    pthread_mutex_unlock(&tp->taskLock);
+
     os_task_t *t = task->task;
     free(task);
     return t;
@@ -47,9 +44,8 @@ os_task_t *get_task(os_threadpool_t *tp) {
 /* === THREAD POOL === */
 
 /* Initialize the new threadpool */
-os_threadpool_t *threadpool_create(unsigned int nTasks, unsigned int nThreads) {
+os_threadpool_t *threadpool_create(unsigned int _, unsigned int nThreads) {
     os_threadpool_t *pool = calloc(1, sizeof(os_threadpool_t));
-    pool->max_tasks = nTasks;
     pool->num_threads = nThreads;
     pthread_mutex_init(&pool->taskLock, NULL);
 
@@ -67,21 +63,20 @@ os_threadpool_t *threadpool_create(unsigned int nTasks, unsigned int nThreads) {
 }
 
 // One millisecond
-struct timespec milli = {0, 1000000L};
+static struct timespec milli = {0, 1000000L};
 
 /* Loop function for threads */
 void *thread_loop_function(void *args) {
     os_threadpool_t *tp = args;
     while (!tp->should_stop) {
         // Try to grab a new task
-        pthread_mutex_lock(&tp->taskLock);
         os_task_t *task = get_task(tp);
-        pthread_mutex_unlock(&tp->taskLock);
         // If there is no task, wait 10 millis before trying to grab task again
         if (task == NULL) nanosleep(&milli, NULL);
         else {
-            // Run task function
+            // Run task
             task->task(task->argument);
+            free(task);
         }
     }
     return NULL;

@@ -16,17 +16,17 @@ typedef struct _node{
 typedef struct {
     unsigned int should_stop;
 
-    unsigned int num_threads, max_tasks;
+    unsigned int num_threads;
     pthread_t *threads;
 
-    unsigned int num_tasks;
     os_task_queue_t *tasks;
     pthread_mutex_t taskLock;
 } os_threadpool_t;
 
 os_task_t *task_create(void *arg, void (*f)(void *));
-int add_task_in_queue(os_threadpool_t *tp, os_task_t *t);
+void add_task_in_queue(os_threadpool_t *tp, os_task_t *t);
 os_task_t *get_task(os_threadpool_t *tp);
+os_threadpool_t *_os_threadpool_create();
 os_threadpool_t *threadpool_create(unsigned int nTasks, unsigned int nThreads);
 void *thread_loop_function(void *args);
 void threadpool_stop(os_threadpool_t *tp, int (*processingIsDone)(os_threadpool_t *));
