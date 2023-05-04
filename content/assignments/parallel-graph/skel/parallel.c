@@ -10,7 +10,7 @@
 #define MAX_THREAD 4
 
 pthread_mutex_t sumLock = PTHREAD_MUTEX_INITIALIZER;
-pthread_mutex_t visLock = PTHREAD_MUTEX_INITIALIZER;
+pthread_mutex_t *visLocks;
 
 os_threadpool_t *tp;
 
@@ -34,33 +34,34 @@ void processNode(void *nodeIdxVoid) {
 
     // Add neighbours to task queue
     for (int i = 0; i < node->cNeighbours; i++) {
-        pthread_mutex_lock(&visLock);
+        pthread_mutex_lock(&visLocks[i]);
         if (graph->visited[node->neighbours[i]] == 0) {
             graph->visited[node->neighbours[i]] = 1;
             add_node_task(node->neighbours[i]);
         }
-        pthread_mutex_unlock(&visLock);
+        pthread_mutex_unlock(&visLocks[i]);
     }
     // Node process complete
+    pthread_mutex_lock(&visLocks[nodeIdx]);
     graph->visited[nodeIdx] = 2;
+    pthread_mutex_unlock(&visLocks[nodeIdx]);
 }
 
-// Check if entire graph was processsed
+// Check if entire graph was processsed and re-start traversal when it stops
 int is_done() {
     for (int i = 0; i < graph->nCount; ++i) {
-        // If the graph is not connected, add the first unprocessed node to the task queue
-        // when all tasks are complete
-        if (graph->visited[i] == 0) {
-            if (tp->tasks == NULL) {
-                pthread_mutex_lock(&visLock);
-                if (graph->visited[i] == 0) {
-                    graph->visited[i] = 1;
-                    add_node_task(i);
-                }
-                pthread_mutex_unlock(&visLock);
+        if (graph->visited[i] != 2) {
+            // If the graph is not connected, the traversal won't reach all nodes from node 0
+            // If traversal ends (tasks becomes NULL), re-start the traversal from the first
+            // un-visited node by creating a new task for it
+            pthread_mutex_lock(&visLocks[i]);
+            if (graph->visited[i] == 0) {
+                graph->visited[i] = 1;
+                add_node_task(i);
             }
+            pthread_mutex_unlock(&visLocks[i]);
             return 0;
-        } else if (graph->visited[i] != 2) return 0;
+        }
     }
     return 1;
 }
@@ -84,9 +85,17 @@ int main(int argc, char *argv[]) {
         return -1;
     }
 
+    // Create vislocks for nodes
+    visLocks = malloc(sizeof(pthread_mutex_t) * graph->nCount);
+    for (int i = 0; i < graph->nCount; ++i) pthread_mutex_init(&visLocks[i], NULL);
+
     tp = threadpool_create(MAX_TASK, MAX_THREAD);
     // is_done will add the first node to queue
     threadpool_stop(tp, is_done);
+
+    // Destroy vislocks
+    for (int i = 0; i < graph->nCount; ++i) pthread_mutex_destroy(&visLocks[i]);
+    free(visLocks);
 
     printf("%d", sum);
     return 0;
