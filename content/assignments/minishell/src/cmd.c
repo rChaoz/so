@@ -171,13 +171,9 @@ static int parse_simple(simple_command_t *s, int level, command_t *father)
             unsetenv(varName);
         } else {
             // Assigning value
-            const char *value = eq->next_part->string;
-
-            // Expand variable if necessary
-            if (eq->next_part->expand)
-                value = get_env(value);
-
+            char *value = parse_word(eq->next_part);
             setenv(varName, value, 1);
+            free(value);
         }
 
         return 0;
@@ -353,13 +349,13 @@ static int run_on_pipe(command_t *cmd1, command_t *cmd2, int level,
             dup2(pipes[1], STDOUT_FILENO);
             close(pipes[0]);
             close(pipes[1]);
-            int r = parse_command(cmd1, level, father), status;
+            parse_command(cmd1, level, father);
 
             close(STDOUT_FILENO);
 
+            int status;
             waitpid(pid, &status, 0);
-            if (r == 0) r = (int) ((char) WEXITSTATUS(status));
-            exit(r);
+            exit((int) ((char) WEXITSTATUS(status)));
         } else {
             // Child 2
             dup2(pipes[0], STDIN_FILENO);
