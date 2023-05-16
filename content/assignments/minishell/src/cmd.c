@@ -186,8 +186,10 @@ static int parse_simple(simple_command_t *s, int level, command_t *father)
     // Check for CD command as if this runs in a fork process, the working
     // directory won't be updates in main process
     char *command = parse_word(s->verb);
-    if (strcmp(command, "cd") == 0)
+    if (strcmp(command, "cd") == 0) {
+        free(command);
         return shell_cd(s->params);
+    }
 
     // Fork process
     int pid = fork();
@@ -195,6 +197,7 @@ static int parse_simple(simple_command_t *s, int level, command_t *father)
 
     // Main process will wait for child process to end and return
     if (pid > 0) {
+        free(command);
         int status;
         waitpid(pid, &status, 0);
         char r = WEXITSTATUS(status);
@@ -256,6 +259,7 @@ static int parse_simple(simple_command_t *s, int level, command_t *father)
     }
 
     // Exit child process
+    free(command);
     exit(ret);
 }
 
