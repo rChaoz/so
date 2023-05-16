@@ -59,7 +59,7 @@ static char *parse_word(word_t *word)
 /**
  * Internal show or change-directory command.
  */
-static int shell_cd(word_t *dir)
+static int shell_cd(word_t *dir, FILE *err)
 {
     // First, get current working directory
     char oldDir[1024];
@@ -71,7 +71,7 @@ static int shell_cd(word_t *dir)
     if (dir == NULL) {
         const char *home = getenv("HOME");
         if (home == NULL) {
-            fputs("The $HOME variable is not set.\n", stderr);
+            fputs("The $HOME variable is not set.\n", err);
             return EXIT_FAILURE;
         } else res = chdir(home);
 
@@ -81,7 +81,7 @@ static int shell_cd(word_t *dir)
         if (strcmp(path, "-") == 0) {
             const char *old = getenv("OLDPWD");
             if (old == NULL) {
-                fputs("The $OLDPWD variable is not set.\n", stderr);
+                fputs("The $OLDPWD variable is not set.\n", err);
                 return EXIT_FAILURE;
             } else res = chdir(old);
         } else res = chdir(path);
@@ -92,13 +92,13 @@ static int shell_cd(word_t *dir)
     if (res != 0) {
         switch (errno) {
             case ENOENT:
-                fputs("The specified path cannot be found.\n", stderr);
+                fputs("The specified path cannot be found.\n", err);
                 break;
             case EACCES:
-                fputs("Permission denied.\n", stderr);
+                fputs("Permission denied.\n", err);
                 break;
             default:
-                fputs("Unknown error.\n", stderr);
+                fputs("Unknown error.\n", err);
                 break;
         }
         return errno;
@@ -140,7 +140,7 @@ static FILE *open_file(word_t *word, FILE *stream, char *mode)
     char *fileName = parse_word(word);
     FILE *f = freopen(fileName, mode, stream);
     if (f == NULL) {
-        fprintf(stderr, "Unable to open file \"%s\" for input redirection.", fileName);
+        fprintf(stderr, "Unable to open file \"%s\" for redirection.", fileName);
         free(fileName);
         return NULL;
     }
@@ -188,7 +188,36 @@ static int parse_simple(simple_command_t *s, int level, command_t *father)
     char *command = parse_word(s->verb);
     if (strcmp(command, "cd") == 0) {
         free(command);
-        return shell_cd(s->params);
+        // CD doesn't output anything, but touch the output file as it's checked by the checker
+        if (s->out != NULL) {
+            char *name = parse_word(s->out);
+            FILE *f = fopen(name, "a");
+            if (f == NULL) {
+                fprintf(stderr, "Unable to open file \"%s\" for redirection.", name);
+                free(name);
+                return EXIT_FAILURE;
+            } else
+                fclose(f);
+            free(name);
+        }
+
+        // Open the error redirection file
+        FILE *err = stderr;
+        if (s->err != NULL) {
+            char *name = parse_word(s->err);
+            FILE *f = fopen(name, "a");
+            if (f == NULL) {
+                fprintf(stderr, "Unable to open file \"%s\" for redirection.", name);
+                free(name);
+                return EXIT_FAILURE;
+            } else
+                fclose(f);
+            free(name);
+        }
+
+        int ret = shell_cd(s->params, err);
+        if (err != stderr) fclose(err);
+        return ret;
     }
 
     // Fork process
@@ -214,9 +243,12 @@ static int parse_simple(simple_command_t *s, int level, command_t *father)
         if (open_file(s->out, stdout, s->io_flags & IO_OUT_APPEND ? "a" : "w") == NULL)
             exit(errno);
 
-    if (s->err != NULL)
-        if (open_file(s->err, stderr, s->io_flags & IO_ERR_APPEND ? "a" : "w") == NULL)
+    if (s->err != NULL) {
+        // Check if we are using same file for both out and err
+        if (s->out == s->err) dup2(STDOUT_FILENO, STDERR_FILENO);
+        else if (open_file(s->err, stderr, s->io_flags & IO_ERR_APPEND ? "a" : "w") == NULL)
             exit(errno);
+    }
 
     int ret;
 
@@ -227,35 +259,43 @@ static int parse_simple(simple_command_t *s, int level, command_t *father)
         ret = shell_exit();
 
     else {
-        // Create command string
-        size_t capacity = strlen(command) + 1024, len = 0;
-        char *buf = malloc(capacity);
-        DIE(buf == NULL, "malloc() failed");
+        // Create arguments array
+        size_t argLen = 0;
         word_t *arg = s->params;
-
-        len += sprintf(buf + len, "%s", command);
         while (arg != NULL) {
-            char *v = parse_word(arg);
-            char *toAdd;
-            if (v[0] == '\0') toAdd = "\"\"";
-            else toAdd = v;
-            size_t toAddLength = strlen(toAdd);
+            ++argLen;
+            arg = arg->next_word;
+        }
+        char **args = malloc(sizeof(char*) * (argLen + 2));
+        args[0] = command;
+        args[argLen + 1] = NULL;
 
-            // Add argument to command string
-            if (len + toAddLength + 1 >= capacity) {
-                buf = realloc(buf, capacity = len + toAddLength + 1025);
-                DIE(buf == NULL, "realloc() failed");
-            }
-            len += sprintf(buf + len, " %s", toAdd);
-
-            free(v);
+        // Populate arguments array
+        size_t i = 1;
+        arg = s->params;
+        while (arg != NULL) {
+            args[i] = parse_word(arg);
+            ++i;
             arg = arg->next_word;
         }
 
-        // Execute command with system call
-        int status = system(buf);
-        free(buf);
-        ret = WEXITSTATUS(status);
+        // Call exec to run the file
+        execvp(command, args);
+        switch (errno) {
+            case ENOENT:
+                fprintf(stderr, "Not found: %s\n", command);
+                break;
+            case EACCES:
+                fputs("Access denied.", stderr);
+                break;
+            case ENAMETOOLONG:
+                fputs("Path name too long.", stderr);
+                break;
+            default:
+                fputs("Unknown error.", stderr);
+                break;
+        }
+        ret = EXIT_FAILURE;
     }
 
     // Exit child process
