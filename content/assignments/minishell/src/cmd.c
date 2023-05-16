@@ -265,9 +265,22 @@ static int parse_simple(simple_command_t *s, int level, command_t *father)
 static int run_in_parallel(command_t *cmd1, command_t *cmd2, int level,
                            command_t *father)
 {
-    /* TODO: Execute cmd1 and cmd2 simultaneously. */
+    int pid = fork(), ret;
+    DIE(pid < 0, "fork() failed");
 
-    return 0; /* TODO: Replace with actual exit status. */
+    // Main process will run first command and then wait for child
+    if (pid > 0) {
+        ret = parse_command(cmd1, level, father);
+        int status;
+        waitpid(pid, &status, 0);
+        int childRet = (int) ((char) WEXITSTATUS(status));
+        if (ret == 0) ret = childRet;
+    }
+    // Child process will run command and exit
+    else
+        exit(parse_command(cmd2, level, father));
+
+    return ret;
 }
 
 /**
@@ -276,9 +289,51 @@ static int run_in_parallel(command_t *cmd1, command_t *cmd2, int level,
 static int run_on_pipe(command_t *cmd1, command_t *cmd2, int level,
                        command_t *father)
 {
-    /* TODO: Redirect the output of cmd1 to the input of cmd2. */
 
-    return 0; /* TODO: Replace with actual exit status. */
+    // Create a child processes
+    int outerPid = fork();
+    DIE(outerPid < 0, "fork() failed");
+
+    if (outerPid == 0) {
+        // Create pipe
+        int pipes[2];
+        DIE(pipe(pipes) == -1, "pipe() failed");
+
+        // Child process splits into 2
+        int pid = fork();
+        DIE(pid < 0, "fork() failed");
+
+        // Child 1 will run cmd1 and child 2 will run cmd2
+        if (pid > 0) {
+            // Child 1
+            dup2(pipes[1], STDOUT_FILENO);
+            close(pipes[0]);
+            close(pipes[1]);
+            int r = parse_command(cmd1, level, father), status;
+
+            close(STDOUT_FILENO);
+
+            waitpid(pid, &status, 0);
+            if (r == 0) r = (int) ((char) WEXITSTATUS(status));
+            exit(r);
+        } else {
+            // Child 2
+            dup2(pipes[0], STDIN_FILENO);
+            close(pipes[0]);
+            close(pipes[1]);
+            int r = parse_command(cmd2, level, father);
+
+            close(STDIN_FILENO);
+            exit(r);
+        }
+    }
+
+    // Main process waits child 1, child 1 waits child 2
+    // 2 children are required because we can't "undo" a stdin/out redirect
+    int status;
+    waitpid(outerPid, &status, 0);
+
+    return (int) ((char) WEXITSTATUS(status));
 }
 
 /**
@@ -308,13 +363,13 @@ int parse_command(command_t *c, int level, command_t *father)
 
         case OP_CONDITIONAL_NZERO:
             ret = parse_command(c->cmd1, level, c);
-            if (ret == 0)
+            if (ret != 0)
                 ret = parse_command(c->cmd2, level, c);
             break;
 
         case OP_CONDITIONAL_ZERO:
             ret = parse_command(c->cmd1, level, c);
-            if (ret != 0)
+            if (ret == 0)
                 ret = parse_command(c->cmd2, level, c);
             break;
 
