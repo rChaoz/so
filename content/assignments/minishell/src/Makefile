@@ -1,7 +1,7 @@
 CC=gcc
 CFLAGS=-g -Wall
 OBJ_PARSER=../util/parser/parser.tab.o ../util/parser/parser.yy.o
-OBJ=main.o cmd.o utils.o
+OBJ=main.o cmd.o utils.o map.o
 TARGET=mini-shell
 .PHONY=build clean build_parser
 
