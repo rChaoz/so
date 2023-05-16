@@ -20,7 +20,8 @@
 /**
  * Get an environment variable, or the empty string "", if not found.
  */
-static const char* get_env(const char *name) {
+static const char *get_env(const char *name)
+{
     const char *value = getenv(name);
     if (value == NULL) return "";
     else return value;
@@ -33,7 +34,7 @@ static char *parse_word(word_t *word)
 {
     char *res = malloc(1024);
     res[0] = '\0';
-    size_t bufLength = 0, length = 0;
+    size_t capacity = 0, length = 0;
 
     while (word != NULL) {
         const char *toAdd = word->string;
@@ -42,8 +43,8 @@ static char *parse_word(word_t *word)
             toAdd = get_env(toAdd);
 
         size_t toAddLength = strlen(toAdd);
-        if (length + toAddLength >= bufLength) {
-            res = realloc(res, length + toAddLength + 1024);
+        if (length + toAddLength >= capacity) {
+            res = realloc(res, capacity = length + toAddLength + 1024);
             DIE(res == NULL, "Unable to allocate memory");
         }
 
@@ -58,7 +59,7 @@ static char *parse_word(word_t *word)
 /**
  * Internal show or change-directory command.
  */
-static int shell_cd(word_t *dir, FILE *err)
+static int shell_cd(word_t *dir)
 {
     // First, get current working directory
     char oldDir[1024];
@@ -70,7 +71,7 @@ static int shell_cd(word_t *dir, FILE *err)
     if (dir == NULL) {
         const char *home = getenv("HOME");
         if (home == NULL) {
-            fputs("The $HOME variable is not set.\n", err);
+            fputs("The $HOME variable is not set.\n", stderr);
             return EXIT_FAILURE;
         } else res = chdir(home);
 
@@ -80,7 +81,7 @@ static int shell_cd(word_t *dir, FILE *err)
         if (strcmp(path, "-") == 0) {
             const char *old = getenv("OLDPWD");
             if (old == NULL) {
-                fputs("The $OLDPWD variable is not set.\n", err);
+                fputs("The $OLDPWD variable is not set.\n", stderr);
                 return EXIT_FAILURE;
             } else res = chdir(old);
         } else res = chdir(path);
@@ -91,13 +92,13 @@ static int shell_cd(word_t *dir, FILE *err)
     if (res != 0) {
         switch (errno) {
             case ENOENT:
-                fputs("The specified path cannot be found.\n", err);
+                fputs("The specified path cannot be found.\n", stderr);
                 break;
             case EACCES:
-                fputs("Permission denied.\n", err);
+                fputs("Permission denied.\n", stderr);
                 break;
             default:
-                fputs("Unknown error.\n", err);
+                fputs("Unknown error.\n", stderr);
                 break;
         }
         return errno;
@@ -113,15 +114,15 @@ static int shell_cd(word_t *dir, FILE *err)
 /**
  * Internal show working-directory command
  */
-static int shell_pwd(FILE *out, FILE *err)
+static int shell_pwd()
 {
     char buf[1024];
     if (getcwd(buf, 1024) == NULL) {
-        fprintf(err, "Unable to get working directory: possibly path too long\n");
+        fputs("Unable to get working directory: possibly path too long\n", stderr);
         return errno;
     } else {
-        fputs(buf, out);
-        fputc('\n', out);
+        fputs(buf, stdout);
+        fputc('\n', stdout);
     }
     return 0;
 }
@@ -134,10 +135,10 @@ static int shell_exit(void)
     return SHELL_EXIT;
 }
 
-static FILE *open_file(word_t *word, char *mode)
+static FILE *open_file(word_t *word, FILE *stream, char *mode)
 {
     char *fileName = parse_word(word);
-    FILE *f = fopen(fileName, mode);
+    FILE *f = freopen(fileName, mode, stream);
     if (f == NULL) {
         fprintf(stderr, "Unable to open file \"%s\" for input redirection.", fileName);
         free(fileName);
@@ -182,56 +183,80 @@ static int parse_simple(simple_command_t *s, int level, command_t *father)
         return 0;
     }
 
+    // Check for CD command as if this runs in a fork process, the working
+    // directory won't be updates in main process
+    char *command = parse_word(s->verb);
+    if (strcmp(command, "cd") == 0)
+        return shell_cd(s->params);
+
+    // Fork process
+    int pid = fork();
+    DIE(pid < 0, "fork() failed");
+
+    // Main process will wait for child process to end and return
+    if (pid > 0) {
+        int status;
+        waitpid(pid, &status, 0);
+        char r = WEXITSTATUS(status);
+        return (int) r;
+    }
+
+    // Child process will execute the command
+
     // Resolve input/outputs redirections
-    FILE *in = stdin;
-    FILE *out = stdout;
-    FILE *err = stderr;
-    if (s->in != NULL) {
-        in = open_file(s->in, "r");
-        if (in == NULL) return errno;
-    }
-    if (s->out != NULL) {
-        out = open_file(s->out, s->io_flags & IO_OUT_APPEND ? "a" : "w");
-        if (out == NULL) {
-            if (in != stdin) fclose(in);
-            return errno;
-        }
-    }
-    if (s->err != NULL) {
-        err = open_file(s->err, s->io_flags & IO_ERR_APPEND ? "a" : "w");
-        if (err == NULL) {
-            if (in != stdin) fclose(in);
-            if (out != stdout) fclose(out);
-            return errno;
-        }
-    }
+    if (s->in != NULL)
+        if (open_file(s->in, stdin, "r") == NULL) exit(errno);
+
+    if (s->out != NULL)
+        if (open_file(s->out, stdout, s->io_flags & IO_OUT_APPEND ? "a" : "w") == NULL)
+            exit(errno);
+
+    if (s->err != NULL)
+        if (open_file(s->err, stderr, s->io_flags & IO_ERR_APPEND ? "a" : "w") == NULL)
+            exit(errno);
+
+    int ret;
 
     // If built-in command, execute the command
-    char *command = parse_word(s->verb);
-    int ret = 0;
-    if (strcmp(command, "cd") == 0)
-        ret = shell_cd(s->params, err);
-    else if (strcmp(command, "pwd") == 0)
-        ret = shell_pwd(out, err);
+    if (strcmp(command, "pwd") == 0)
+        ret = shell_pwd();
     else if (strcmp(command, "exit") == 0 || strcmp(command, "quit") == 0)
         ret = shell_exit();
-    else if (2) {
-        /* TODO: If external command:
-         *   1. Fork new process
-         *     2c. Perform redirections in child
-         *     3c. Load executable in child
-         *   2. Wait for child
-         *   3. Return exit status
-         */
+
+    else {
+        // Create command string
+        size_t capacity = strlen(command) + 1024, len = 0;
+        char *buf = malloc(capacity);
+        DIE(buf == NULL, "malloc() failed");
+        word_t *arg = s->params;
+
+        len += sprintf(buf + len, "%s", command);
+        while (arg != NULL) {
+            char *v = parse_word(arg);
+            char *toAdd;
+            if (v[0] == '\0') toAdd = "\"\"";
+            else toAdd = v;
+            size_t toAddLength = strlen(toAdd);
+
+            // Add argument to command string
+            if (len + toAddLength + 1 >= capacity) {
+                buf = realloc(buf, capacity = len + toAddLength + 1025);
+                DIE(buf == NULL, "realloc() failed");
+            }
+            len += sprintf(buf + len, " %s", toAdd);
+
+            free(v);
+            arg = arg->next_word;
+        }
+
+        // Execute command with system call
+        int status = system(buf);
+        free(buf);
+        ret = WEXITSTATUS(status);
     }
 
-    // Close input/output files and free memory
-    if (in != stdin) fclose(in);
-    if (out != stdout) fclose(out);
-    if (err != stderr) fclose(err);
-    free(command);
-
-    return ret;
+    // Exit child process
+    exit(ret);
 }
 
 /**
